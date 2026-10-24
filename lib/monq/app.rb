@@ -8,7 +8,7 @@ module Monq
     attr_reader :environments, :options
 
     class << self
-      attr_accessor :instance
+      attr_accessor :instance, :log_io
     end
 
     def initialize(options)

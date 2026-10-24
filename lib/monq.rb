@@ -15,6 +15,8 @@ require_relative "monq/ext/array"
 require_relative "monq/ext/document"
 require_relative "monq/ext/criteria"
 require_relative "monq/ext/view"
+require_relative "monq/multi_io"
+require_relative "monq/commands"
 
 module Monq
 end
