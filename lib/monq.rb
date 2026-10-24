@@ -3,6 +3,7 @@
 require_relative "monq/version"
 require_relative "monq/errors"
 require_relative "monq/config"
+require_relative "monq/environment"
 
 module Monq
 end
