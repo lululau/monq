@@ -53,6 +53,20 @@ module Monq
       !@sandbox_session.nil?
     end
 
+    def bind_session(session)
+      @sandbox_session = session
+      attach_client_session(session)
+    end
+
+    def clear_session
+      if @sandbox_session
+        @sandbox_session.abort_transaction rescue nil
+        @sandbox_session.end_session rescue nil
+        @sandbox_session = nil
+      end
+      detach_client_session
+    end
+
     def load_models!
       install_namespace_api!
       path = File.join(@model_dir, "#{Config.prefix_for(name)}.rb")
@@ -89,6 +103,26 @@ module Monq
     end
 
     private
+
+    def attach_client_session(session)
+      return unless @client
+
+      if @client.respond_to?(:session=)
+        @client.session = session
+      else
+        @client.instance_variable_set(:@monq_session, session)
+      end
+    end
+
+    def detach_client_session
+      return unless @client
+
+      if @client.respond_to?(:session=)
+        @client.session = nil
+      elsif @client.instance_variable_defined?(:@monq_session)
+        @client.remove_instance_variable(:@monq_session)
+      end
+    end
 
     def ensure_ssh_proxy!
       return unless config[:ssh]
