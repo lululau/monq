@@ -18,7 +18,8 @@ module Monq
     end
 
     def connect!
-      opts = Config.client_options(config)
+      ensure_ssh_proxy!
+      opts = Config.client_options(client_config)
       @client = Mongo::Client.new(opts[:hosts], **opts[:options].merge(database: opts[:database]))
       Mongoid::Clients.set(client_name, @client)
       Mongoid::Clients.set(:default, @client) if @first
@@ -39,6 +40,7 @@ module Monq
     def reconnect!
       raise Error, "sandbox is active; run sandbox-quit first" if sandbox?
 
+      @ssh_proxy&.reconnect!
       @client&.close
       connect!
     end
@@ -87,6 +89,29 @@ module Monq
     end
 
     private
+
+    def ensure_ssh_proxy!
+      return unless config[:ssh]
+      return if @ssh_proxy
+
+      target = Config.ssh_forward_target(config)
+      ssh = config[:ssh]
+      @ssh_proxy = SSHProxy.new(
+        host: ssh[:host],
+        user: ssh[:user],
+        password: ssh[:password],
+        port: ssh[:port] || 22,
+        forward_host: target[:host],
+        forward_port: target[:port],
+        local_port: ssh[:local_port]
+      )
+    end
+
+    def client_config
+      return config unless @ssh_proxy
+
+      config.merge(ssh: config[:ssh].merge(local_port: @ssh_proxy.local_port, local_host: "127.0.0.1"))
+    end
 
     def tracked_names
       @tracked ||= []

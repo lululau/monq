@@ -31,6 +31,18 @@ RSpec.describe Monq::Environment do
     expect(Mongoid::Clients).not_to have_received(:set).with(:default, fake_client)
   end
 
+  it "builds client options through the opened SSH local port" do
+    proxy = instance_double(Monq::SSHProxy, local_port: 27018, database_host_port: { host: "127.0.0.1", port: 27018 })
+    allow(Monq::SSHProxy).to receive(:new).and_return(proxy)
+    config = { host: "10.0.0.12", database: "fof", namespace: "Fof", ssh: { host: "jump", user: "deploy", port: 22 } }
+    env = described_class.new("fof.dev", config, first: true, model_dir: "/tmp")
+    expect(Monq::Config).to receive(:client_options).with(
+      hash_including(ssh: hash_including(local_port: 27018, local_host: "127.0.0.1"))
+    ).and_call_original
+    env.connect!
+    expect(Monq::SSHProxy).to have_received(:new).with(hash_including(forward_host: "10.0.0.12", forward_port: 27017))
+  end
+
   it "loads prefix file into the namespace and rebinds :default client" do
     dir = Dir.mktmpdir
     File.write(File.join(dir, "fof.rb"), <<~RUBY)
