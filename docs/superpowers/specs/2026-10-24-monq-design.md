@@ -117,7 +117,7 @@ CLI 与 YAML 合并：
 | `connect!` | SSH（若有）→ 注册 client → `hello` |
 | `reconnect!` / `ping?` | 重建 client（仍用隧道改写后的 `127.0.0.1:local_port`，不得拿原始 URI seed 重建）/ `hello`（与 sandbox 探活同一命令，不用 `ping`） |
 | `load_models!` | load 前缀文件到 namespace，绑定 `store_in client:`，生成缩写常量 |
-| `redefine!` | 见 5.3：从 namespace **和** `Mongoid.models` 注销后再 load。不重新 load 全局 `init.rb`。sandbox 中调用则先 `sandbox-quit` 再 redefine |
+| `redefine!` | 见 5.3：从 namespace **和** `Mongoid.models` 注销后再 load。不重新 load 全局 `init.rb`。Pry 命令在 sandbox 中拒绝；本方法若在 sandbox 中被直接调用也拒绝（`raise`），不悄悄 quit |
 | `models` | 顶层 Document 类数组（排除 embedded） |
 | `client` | `Mongo::Client` |
 | `sandbox_enter` / `sandbox_quit` | 见第 7 节 |
@@ -135,9 +135,13 @@ CLI 与 YAML 合并：
 - `reconnect`：仅当 `!active?` 时 `reconnect!`。
 - `reconnect!`：关掉旧网关，用**同一** `local_port` 重新 `open` 到同一 `forward_host:forward_port`。
 
-有 `uri` 又有 `ssh` 时：解析 URI 的第一个 host/port 作为 `forward_*`；client 的 hosts **只保留** `127.0.0.1:local_port` 这一条 seed，并设置 `direct_connection: true`（或等价：禁止 topology 发现）。否则 driver 会发现副本集其它成员、绕开隧道。第一版不转发 URI 里的其余 host；README 写明「SSH + replica set 只走第一个 seed + direct_connection」。
+凡配置了 `ssh`（无论连接来自 `uri` 还是 `host`/`port`/`replica_set`）：
 
-`Environment#reconnect!` 必须：先 `ssh_proxy.reconnect!`（若有 ssh），再关闭并按**改写后**的 host/port 注册同名 client，不得重新解析未经改写的原始 URI。
+- `forward_host`/`forward_port` 取 URI 第一个 host/port，或拆字段的 `host`/`port`（缺省 `27017`）。
+- 注册 client 时 hosts **只保留** `127.0.0.1:local_port` 一条 seed，并设置 `direct_connection: true`（禁止 topology 发现）。否则 driver 会发现副本集其它成员、绕开隧道。
+- 第一版不转发其余 replica 成员；README 写明「SSH 只走第一个 seed + direct_connection」。
+
+`Environment#reconnect!` 必须：先 `ssh_proxy.reconnect!`（若有 ssh），再关闭并按**改写后**的 host/port 注册同名 client，不得重新解析未经改写的原始 URI / host。
 
 ### 4.5 `Monq::Repl`
 
@@ -218,25 +222,25 @@ URI 与 `database` 同时存在：client 连 URI，`use`/`database` 以 `databas
 `load_models!` 之后：
 
 ```
-对 namespace_module 中 constants 递归（一层：该模块下的类，不含子模块深搜也可；第一版只扫 namespace 模块自身常量）
+对 namespace_module 自身常量（第一版不深搜子模块）
   若 klass < Mongoid::Document
-    若 klass.embedded? → 跳过
-    若 klass.storage_options[:client] 已由用户设置 → 不覆盖
-    否则 klass.store_in client: client_name
+    若 klass.embedded? → 跳过（不 store_in client）
+    若 storage 上的 client 是用户显式写的非 :default 名 → 不覆盖
+    否则（含 Mongoid 默认的 client: :default）→ klass.store_in client: client_name
 ```
+
+判定「用户显式指定了 client」：**仅当** `store_in` 的 client 存在且 **不是** `:default`。`include Mongoid::Document` 会把 client 设成 `:default`，不能把「有 client 键」当成用户指定。
 
 用户可在模型里写 `store_in collection: 'Fund_approved'`；缺省 collection 仍是 Mongoid 对类名的 pluralize，所以 **fof 这种 PascalCase 集合名必须显式 `store_in collection:`**。README 写明：前缀文件里写 `class Fund`，不要写 `class Fof::Fund`（已经在模块上下文里）。
 
-`:default` client：Mongoid 在 `include Mongoid::Document` 时可能碰 default client。规则：**每个已连接环境都把自己的 client 注册为命名 client；另外把 `-e` 列表里的第一个环境再登记一份为 `:default`**。多环境时未 `store_in client:` 的类会落到第一个环境——这就是为什么 load 之后还要补 `store_in client:`。用户在模型里写了 `store_in client:` 的不覆盖。
+`:default` client：Mongoid 在 `include Mongoid::Document` 时会碰 default client。规则：每个环境把自己的 **同一个** `Mongo::Client` 实例注册为命名 client（`:fof_dev`）；**另外把 `-e` 列表第一个环境的同一实例再映射为 `:default`**（不是再 `Mongo::Client.new` 一份）。多环境时未改绑的类会落到第一个环境——这就是为什么 load 之后还要把非显式 client 改成该环境的命名 client。
 
 `redefine!`：
 
-1. 若该环境在 sandbox 中：先对该环境（实际上是全局 sandbox，见 7.1）执行 `sandbox-quit`。
-2. 对本 namespace 中由 Monq 登记的顶层 Document 与缩写：`remove_const`。
-3. 从 `Mongoid.models`（以及所用版本上等价的类注册表）删除这些类，避免旧 class 残留回调。
+1. 若全局 sandbox 已启用：`raise`，不修改模型、不 quit sandbox。Pry 命令同样拒绝。
+2. 收集本 namespace 中 Monq 挂上的常量：顶层 Document、**其嵌入类**（`embedded_relations` / 嵌套 `Class`）、缩写。
+3. 对这些类：从 `Mongoid.models`（及所用版本等价注册表）删除，再 `namespace_module.remove_const`。
 4. 再 `load_models!`。
-
-嵌入类随父文件重新 module_eval；不单独 `store_in client:`。
 
 ### 5.4 缩写与顶层别名
 
@@ -267,7 +271,7 @@ URI 与 `database` 同时存在：client 连 URI，`use`/`database` 以 `databas
 | `reconnect` | 每环境：有 ssh 则 `ssh_proxy.reconnect`（仅网关死了才重建隧道）；`ping?`（`hello`）为假才重建该环境 client。sandbox 中拒绝，提示先 `sandbox-quit` |
 | `reconnect!` | 每环境：有 ssh 则 `ssh_proxy.reconnect!`（强制重建隧道，同一 local_port）；然后强制按改写后的地址重建 client。sandbox 中同样拒绝 |
 | `sandbox-enter` / `sandbox-quit` | 第 7 节 |
-| `redefine` / `redef` | 每环境 `redefine!`（只重载前缀模型文件，不重载全局 init.rb） |
+| `redefine` / `redef` | sandbox 中**拒绝**（与 `reconnect` 相同，提示先 `sandbox-quit`）。否则每环境 `redefine!`（只重载前缀模型文件，不重载全局 init.rb） |
 
 `-S` 启动即 `show-sql`；`-w`/`-A` 把同一 `log_io` 接到文件。
 
@@ -284,7 +288,9 @@ URI 与 `database` 同时存在：client 连 URI，`use`/`database` 以 `databas
 | `Hash` / `Array` | `as_json` 后的紧凑 JSON，超过 120 字符截断加 `…` |
 | 其它 | `as_json` 或 `to_s` |
 
-文档 `t` / `v`：表头取**物化文档的 `attributes.keys`**（含未在模型里 `field` 声明的键、含 `_id`），不是只打 `fields` 声明。值为 Presenter 后的标量。`_meta` 作为一列截断 JSON，不自动展开为多列。
+文档 `t` / `v`：表头取**物化文档的 `attributes.keys`**（含未在模型里 `field` 声明的键、含 `_id`），不是只打 `fields` 声明。多行时表头取**第一行**的 keys；后续行缺的键留空，多出来的键本表不显示（不求并集，避免宽表爆炸）。值为 Presenter 后的标量。`_meta` 作为一列截断 JSON，不自动展开为多列。
+
+类方法 `Fund.t`（Arql 那种打表结构）：第一版**不做**。结构探索用 `m` 和 `Fof.collections`。
 
 `v` 返回值（给 Org Babel / 给 `t` 复用，对齐 Arql）：
 
@@ -304,26 +310,24 @@ Criteria / View 的 `t`、`v`、`vd`：若用户未设 `limit`，物化前最多
 - YouPlot / Chartkick
 - sandbox 提交（只有 rollback）
 - YAML `model_names` / `rename_columns`
+- 类方法 `Model.t` 打 schema（无固定列）
 
 ## 7. Sandbox、错误处理
 
 ### 7.1 Sandbox
 
-`sandbox-enter` 对每个环境：
+`sandbox-enter` 分两阶段，全有或全无：
 
-1. `hello = client.database.command(hello: 1).first`
-2. 若无 `setName` 且 `msg != "isdbgrid"` → **失败**：打印「当前部署不支持事务（需要 replica set 或 mongos），未进入 sandbox」，该环境不标记 enabled。任一环境失败则整体不进入（全部回退），避免半开。
-3. 否则 `session = client.start_session`；`session.start_transaction`；把 session 存到 `Environment`；将后续该 client 上的 Mongoid 持久化绑到此 session。
+1. **检查：** 对每个环境 `hello = client.database.command(hello: 1).documents.first`（或 driver 等价）。无 `setName` 且 `msg != "isdbgrid"` → 整体失败，打印「当前部署不支持事务（需要 replica set 或 mongos），未进入 sandbox」，**不开任何 session**。
+2. **开启：** 全部通过后，逐环境 `session = client.start_session`；`session.start_transaction`；把 session 绑到该环境的 **同一个** `Mongo::Client`（见下）。第 N 个失败则 abort 已成功的 1..N-1，整体拒绝。
 
 绑定方式（实现约束，不是用户 API）：REPL 不能包在 `with_session` 块里。**禁止**只把 session 塞进全局 `Mongoid::Threaded.set_session`——多环境时后一个会盖掉前一个。必须 **按 Environment 的 `Mongo::Client` 注入 session**（对该环境 client 设默认 session，或包装该 client 使后续操作带 session）。规格要求：**该环境模型的 `save`/`update`/`delete`/`create` 走该环境事务；`Fof.client[:x].insert_one` 第一版不保证进事务**，README 写明。
-
-进入顺序：先对**所有**环境做 `hello` 能力检查，任一失败则**不**开任何 session，整体拒绝。全部通过后再逐个 `start_session` + `start_transaction`。若第 N 个 `start_transaction` 失败：对已成功的 1..N-1 `abort_transaction` + `end_session`，整体拒绝，prompt 不显示 sandbox。
 
 `sandbox-quit`：每个已开启的 session `abort_transaction` + `end_session`；解开 per-client session 绑定；prompt 去掉 sandbox。没有 commit 命令。
 
 `sandbox-enter` 时已在 sandbox 中 → 提示已在，不嵌套。
 
-sandbox 期间 `reconnect` / `reconnect!` / `redefine`：拒绝并提示先 `sandbox-quit`（`redefine!` 作为 API 被 Pry 调用时由命令层拒绝；若代码路径直接调 `Environment#redefine!` 则该方法自己先 quit，见 5.3。Pry 命令与 `reconnect` 选择**拒绝**而不是悄悄 quit，以免用户以为还在 sandbox）。
+sandbox 期间 Pry 命令 `reconnect` / `reconnect!` / `redefine`：**拒绝**并提示先 `sandbox-quit`，不悄悄退出 sandbox。`Environment#redefine!` / `reconnect!` 在 sandbox 中同样 `raise`。
 
 ### 7.2 错误
 
