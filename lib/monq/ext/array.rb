@@ -15,6 +15,33 @@ class Array
     t
   end
 
+  def write_csv(filename)
+    require "csv"
+    docs = respond_to?(:hash_docs, true) ? hash_docs : self
+    File.open(filename, "w:UTF-8") do |file|
+      csv = CSV.new(file)
+      return if docs.empty?
+
+      keys = docs.first.keys
+      csv << keys.map(&:to_s)
+      docs.each { |row| csv << keys.map { |k| row[k].to_s } }
+    end
+  end
+
+  def write_excel(filename, sheet_name: "Sheet1")
+    require "caxlsx"
+    docs = hash_docs
+    package = Axlsx::Package.new
+    package.workbook.add_worksheet(name: sheet_name) do |sheet|
+      next if docs.empty?
+
+      keys = docs.first.keys
+      sheet.add_row(keys.map(&:to_s))
+      docs.each { |row| sheet.add_row(keys.map { |k| row[k].to_s }) }
+    end
+    package.serialize(filename)
+  end
+
   private
 
   def hash_docs

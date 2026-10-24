@@ -15,6 +15,15 @@ module Monq
         materialized_docs.vd
       end
 
+      # Full result set. Display methods cap at 500; export must not.
+      def write_csv(filename)
+        to_a.write_csv(filename)
+      end
+
+      def write_excel(filename, sheet_name: "Sheet1")
+        to_a.write_excel(filename, sheet_name: sheet_name)
+      end
+
       private
 
       def materialized_docs

@@ -14,6 +14,14 @@ module Monq
       def vd
         [attributes].vd
       end
+
+      def write_csv(filename)
+        [self].write_csv(filename)
+      end
+
+      def write_excel(filename, sheet_name: "Sheet1")
+        [self].write_excel(filename, sheet_name: sheet_name)
+      end
     end
   end
 end
