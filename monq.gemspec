@@ -8,12 +8,12 @@ Gem::Specification.new do |spec|
   spec.authors = ["Liu Xiang"]
   spec.email = ["liuxiang921@gmail.com"]
 
-  spec.summary = "TODO: Write a short summary, because RubyGems requires one."
-  spec.description = "TODO: Write a longer description or delete this line."
+  spec.summary = "Mongoid + Pry MongoDB query workbench"
+  spec.description = "Load user-authored Mongoid models and query MongoDB from a Pry REPL."
   spec.homepage = "https://github.com/lululau/monq"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.2.0"
-  spec.metadata["allowed_push_host"] = "TODO: Set to your gem server 'https://example.com'"
+  spec.metadata["allowed_push_host"] = "https://rubygems.org"
   spec.metadata["homepage_uri"] = spec.homepage
   spec.metadata["source_code_uri"] = "https://github.com/lululau/monq"
 
@@ -36,8 +36,14 @@ Gem::Specification.new do |spec|
   spec.executables = spec.files.grep(%r{\Aexe/}) { |f| File.basename(f) }
   spec.require_paths = ["lib"]
 
-  # Uncomment to register a new dependency of your gem
-  # spec.add_dependency "example-gem", "~> 1.0"
+  spec.add_dependency "mongoid", "~> 9.0"
+  spec.add_dependency "pry", "~> 0.15"
+  spec.add_dependency "pry-byebug", "~> 3.10"
+  spec.add_dependency "net-ssh-gateway", "~> 2.0"
+  spec.add_dependency "terminal-table", "~> 4.0"
+  spec.add_dependency "rainbow", "~> 3.1"
+  spec.add_dependency "caxlsx", "~> 4.1"
+  spec.add_dependency "roo", "~> 2.10"
 
   # For more information and examples about making a new gem, check out our
   # guide at: https://guides.rubygems.org/make-your-own-gem/
