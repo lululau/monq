@@ -80,6 +80,8 @@ CLI 与 YAML 合并：
 - **多个** `-e` 环境：禁止 CLI 覆盖单连接字段（`--uri` `--db-*` `--ssh-*`）。出现则退出 1。
 - **一个** `-e` 或合成的临时 `default`：CLI 覆盖 YAML。标量键（`uri` `host` `port` `database` `username` `password` `auth_source` `replica_set` `ssl` `namespace`）CLI 非空则整键替换。`ssh:` **deep merge**，CLI 提供的 ssh 子键覆盖 YAML 的对应子键，未提供的子键保留。
 - YAML 里名为 `default` 或 `arql` 的键只允许当锚点（`&default`），**不能**作为 `-e default` 的环境。尝试使用则退出 1，提示保留名。无 `-e` 时也**绝不**把 YAML 的 `default:` 段当成要连接的环境。
+- 两个 `-e` 环境解析出**相同 `namespace` 模块名**：退出 1（一个模块不能绑两个 client）。
+- `run!` 互斥优先级（先命中的执行，只执行一种）：`-E` > 文件参数 > 非 tty STDIN > TTY 则 Pry。`-E` 与文件同时出现时只 eval `-E`，忽略文件。
 
 ## 4. 单元与接口
 
@@ -115,7 +117,7 @@ CLI 与 YAML 合并：
 | `client_name` | Mongoid client 符号。`fof.dev` → `:fof_dev`（非 `[A-Za-z0-9]` 换成 `_`） |
 | `config` | 该环境合并后的配置 Hash（含自定义键） |
 | `connect!` | SSH（若有）→ 注册 client → `hello` |
-| `reconnect!` / `ping?` | 重建 client（仍用隧道改写后的 `127.0.0.1:local_port`，不得拿原始 URI seed 重建）/ `hello`（与 sandbox 探活同一命令，不用 `ping`） |
+| `reconnect!` / `ping?` | 重建 client（仍用隧道改写后的 `127.0.0.1:local_port` 与去掉拓扑后的 options，不得拿原始 URI/host/seeds 重建；第一个环境的同一实例再映射 `:default`）/ `hello`（与 sandbox 探活同一命令，不用 `ping`） |
 | `load_models!` | load 前缀文件到 namespace，绑定 `store_in client:`，生成缩写常量 |
 | `redefine!` | 见 5.3：从 namespace **和** `Mongoid.models` 注销后再 load。不重新 load 全局 `init.rb`。Pry 命令在 sandbox 中拒绝；本方法若在 sandbox 中被直接调用也拒绝（`raise`），不悄悄 quit |
 | `models` | 顶层 Document 类数组（排除 embedded） |
@@ -138,10 +140,12 @@ CLI 与 YAML 合并：
 凡配置了 `ssh`（无论连接来自 `uri` 还是 `host`/`port`/`replica_set`）：
 
 - `forward_host`/`forward_port` 取 URI 第一个 host/port，或拆字段的 `host`/`port`（缺省 `27017`）。
-- 注册 client 时 hosts **只保留** `127.0.0.1:local_port` 一条 seed，并设置 `direct_connection: true`（禁止 topology 发现）。否则 driver 会发现副本集其它成员、绕开隧道。
-- 第一版不转发其余 replica 成员；README 写明「SSH 只走第一个 seed + direct_connection」。
+- 注册 client 时 hosts **只保留** `127.0.0.1:local_port` 一条 seed，并设置 `direct_connection: true`。
+- **同时丢掉拓扑选项**，否则 Ruby driver 会拒绝 `direct_connection: true` + `replicaSet`：删除 `replica_set` / URI 的 `replicaSet`、`connect: :replica_set`、以及其它 seed。**保留** auth、database、auth_source、ssl、用户名密码。
+- `mongodb+srv://`（SRV）+ `ssh`：退出 1。SRV 主机不是可转发的 mongod seed；第一版不解析 SRV。无 ssh 的 SRV URI 允许。
+- 第一版不转发其余 replica 成员；README 写明「SSH 只走第一个 seed + direct_connection，不带 replicaSet」。
 
-`Environment#reconnect!` 必须：先 `ssh_proxy.reconnect!`（若有 ssh），再关闭并按**改写后**的 host/port 注册同名 client，不得重新解析未经改写的原始 URI / host。
+`Environment#reconnect!` 必须：先 `ssh_proxy.reconnect!`（若有 ssh），再关闭并按**改写后**的 host/port 与**同一套去掉拓扑后的 options** 注册同名 client，不得拿未经改写的原始 URI/host/seeds 重建。若该环境是 `-e` 列表第一个，把 **同一个** client 实例再映射为 `:default`。
 
 ### 4.5 `Monq::Repl`
 
@@ -226,7 +230,7 @@ URI 与 `database` 同时存在：client 连 URI，`use`/`database` 以 `databas
   若 klass < Mongoid::Document
     若 klass.embedded? → 跳过（不 store_in client）
     若 storage 上的 client 是用户显式写的非 :default 名 → 不覆盖
-    否则（含 Mongoid 默认的 client: :default）→ klass.store_in client: client_name
+    否则（含 Mongoid 默认的 client: :default）→ store_in **合并** client: client_name，保留已有 collection / store_as / cap 等
 ```
 
 判定「用户显式指定了 client」：**仅当** `store_in` 的 client 存在且 **不是** `:default`。`include Mongoid::Document` 会把 client 设成 `:default`，不能把「有 client 键」当成用户指定。
@@ -386,7 +390,7 @@ docs/superpowers/specs/2026-10-24-monq-design.md
 
 ## 10. 测试
 
-1. **单元（默认 rake spec）：** YAML 合并与 URI 优先；`database:` 覆盖 URI path；无 `-e` 时合成/失败（含「不要把 YAML `default:` 锚点当环境」）；单环境 CLI 覆盖与 `ssh:` deep merge；多环境禁止 CLI 覆盖；client 名与 namespace 默认；前缀 `fof.dev` → `fof.rb`；缩写冲突；Presenter；`const_missing` 顺序；URI 打码；SSH 改写后只留一条 seed + `direct_connection`；sandbox 多环境失败时回退已开 session；`redefine!` 后 `Mongoid.models` 无残留。命令模块在假 Environment 上的输出。不连网。
+1. **单元（默认 rake spec）：** YAML 合并与 URI 优先；`database:` 覆盖 URI path；无 `-e` 时合成/失败（含「不要把 YAML `default:` 锚点当环境」）；单环境 CLI 覆盖与 `ssh:` deep merge；多环境禁止 CLI 覆盖；同 namespace 两环境失败；client 名与 namespace 默认；前缀 `fof.dev` → `fof.rb`；缩写冲突；Presenter；`const_missing` 顺序；URI 打码；SSH 改写后只留一条 seed + `direct_connection` 且 **无** `replica_set`；`mongodb+srv`+ssh 失败；sandbox 多环境失败时回退已开 session；`redefine!` 后 `Mongoid.models` 无残留（含嵌入类）。命令模块在假 Environment 上的输出。不连网。
 2. **集成（有 `MONQ_TEST_URI` 且 `MONQ_TEST_DB` 才跑，否则 skip）：** `hello` 成功；`collection_names` 非空；临时 `store_in collection: 'Fund_approved'` 的模型 `count` >= 1；`where(fund_name: ...).limit(2).to_a` 能过 Presenter/`Table`。URI 只来自环境变量。
 3. 不测 Pry TTY。不把 `10.0.0.12` 密码写进仓库或 CI 配置。
 
