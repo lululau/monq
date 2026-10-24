@@ -1,5 +1,8 @@
 # frozen_string_literal: true
 
+require "fileutils"
+require "tmpdir"
+
 RSpec.describe Monq::Environment do
   let(:hello_doc) { { "ok" => 1, "setName" => "rs0" } }
   let(:fake_client) do
@@ -26,5 +29,42 @@ RSpec.describe Monq::Environment do
     env.connect!
     expect(Mongoid::Clients).to have_received(:set).with(:ops_prod, fake_client)
     expect(Mongoid::Clients).not_to have_received(:set).with(:default, fake_client)
+  end
+
+  it "loads prefix file into the namespace and rebinds :default client" do
+    dir = Dir.mktmpdir
+    File.write(File.join(dir, "fof.rb"), <<~RUBY)
+      class Fund
+        include Mongoid::Document
+        store_in collection: "Fund_approved"
+        embeds_one :meta, class_name: "FundMeta"
+      end
+      class FundMeta
+        include Mongoid::Document
+        embedded_in :fund
+        field :status, type: String
+      end
+    RUBY
+
+    env = described_class.new("fof.dev", { host: "h", database: "d", namespace: "Fof" }, first: true, model_dir: dir)
+    allow(env).to receive(:connect!)
+    env.load_models!
+    expect(Fof::Fund.storage_options[:client]).to eq(:fof_dev)
+    expect(Fof::Fund.storage_options[:collection]).to eq("Fund_approved")
+    expect(Fof::FundMeta).to be_embedded
+    expect(Fof.const_defined?(:F)).to eq(true)
+  ensure
+    Object.send(:remove_const, :Fof) if Object.const_defined?(:Fof)
+    FileUtils.remove_entry(dir) if dir
+  end
+
+  it "warns and continues when the prefix file is missing" do
+    dir = Dir.mktmpdir
+    env = described_class.new("fof.dev", { host: "h", database: "d", namespace: "FofX" }, first: true, model_dir: dir)
+    expect { env.load_models! }.to output(/fof\.rb/).to_stderr
+    expect(env.models).to eq([])
+  ensure
+    Object.send(:remove_const, :FofX) if Object.const_defined?(:FofX)
+    FileUtils.remove_entry(dir) if dir
   end
 end
