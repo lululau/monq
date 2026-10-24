@@ -132,5 +132,85 @@ module Monq
         options[key] || options[key.to_s]
       end
     end
+
+    def client_options(env)
+      env = deep_sym(env)
+      ssh = env[:ssh]
+      if ssh && env[:uri].to_s.start_with?("mongodb+srv:")
+        raise Error, "mongodb+srv with ssh is not supported; use a direct host"
+      end
+
+      built = env[:uri].to_s != "" ? from_uri(env) : from_fields(env)
+      return built unless ssh && ssh[:local_port]
+
+      {
+        hosts: ["127.0.0.1:#{ssh[:local_port]}"],
+        database: built[:database],
+        options: without_connect(without_replica_set(built[:options].merge(direct_connection: true)))
+      }
+    end
+
+    def from_uri(env)
+      require "mongo"
+      parsed = Mongo::URI.get(env[:uri])
+      database = env[:database].to_s
+      database = parsed.client_options["database"].to_s if database.empty?
+      raise Error, "database is required (URI path is empty)" if database.empty?
+
+      options = symbolize_options(parsed.uri_options)
+      creds = parsed.credentials
+      options[:user] = creds[:user] if creds[:user]
+      options[:password] = creds[:password] if creds[:password]
+      options = without_replica_set(options) if env[:ssh] && env[:ssh][:local_port]
+      {
+        hosts: parsed.servers,
+        database: database,
+        options: options
+      }
+    end
+
+    def from_fields(env)
+      raise Error, "host and database are required" if env[:host].to_s.empty? || env[:database].to_s.empty?
+
+      port = env[:port] || 27017
+      options = {}
+      options[:user] = env[:username] if env[:username]
+      options[:password] = env[:password] if env[:password]
+      options[:auth_source] = env[:auth_source] if env[:auth_source]
+      options[:replica_set] = env[:replica_set] if env[:replica_set] && !(env[:ssh] && env[:ssh][:local_port])
+      options[:ssl] = env[:ssl] unless env[:ssl].nil?
+      { hosts: ["#{env[:host]}:#{port}"], database: env[:database], options: options }
+    end
+
+    def mask_uri(uri)
+      uri.to_s.sub(%r{://([^:/@]+):[^@]+@}, '://\1:***@')
+    end
+
+    def ssh_forward_target(env)
+      env = deep_sym(env)
+      if env[:uri].to_s != ""
+        require "mongo"
+        host, port = Mongo::URI.get(env[:uri]).servers.first.split(":")
+        { host: host, port: (port || 27017).to_i }
+      else
+        { host: env[:host], port: (env[:port] || 27017).to_i }
+      end
+    end
+
+    def symbolize_options(options)
+      options.to_h { |key, value| [key.to_sym, value] }
+    end
+
+    def without_replica_set(options)
+      options.reject { |key, _| replica_set_key?(key) }
+    end
+
+    def without_connect(options)
+      options.except(:connect, "connect")
+    end
+
+    def replica_set_key?(key)
+      %w[replica_set replicaset].include?(key.to_s.downcase.tr("-", "_"))
+    end
   end
 end
