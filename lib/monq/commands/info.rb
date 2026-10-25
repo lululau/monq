@@ -31,13 +31,15 @@ module Monq
             #{ssh}
         INFO
       end
-    end
-  end
-end
 
-if defined?(Pry)
-  Pry.commands.block_command("info", "Show connection info for matching environments") do |pattern|
-    pattern = Regexp.new(pattern || ".*", Regexp::IGNORECASE)
-    output.puts Monq::Commands::Info.render(Monq::App.instance.environments, pattern)
+      def register_pry_command!
+        return if Pry.commands["info"]
+
+        Pry.commands.block_command("info", "Show connection info for matching environments") do |pattern|
+          pattern = Regexp.new(pattern || ".*", Regexp::IGNORECASE)
+          output.puts Monq::Commands::Info.render(Monq::App.instance.environments, pattern)
+        end
+      end
+    end
   end
 end

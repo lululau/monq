@@ -9,5 +9,17 @@ require_relative "commands/sandbox"
 
 module Monq
   module Commands
+    module_function
+
+    def register_pry_commands!
+      return unless defined?(Pry)
+
+      Info.register_pry_command!
+      Models.register_pry_command!
+      ShowSql.register_pry_command!
+      Reconnect.register_pry_command!
+      Redefine.register_pry_command!
+      Sandbox.register_pry_command!
+    end
   end
 end

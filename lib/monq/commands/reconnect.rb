@@ -28,16 +28,18 @@ module Monq
           proxy.reconnect
         end
       end
+
+      def register_pry_command!
+        return if Pry.commands["reconnect"]
+
+        Pry.commands.block_command("reconnect", "Reconnect dead clients") do
+          Monq::Commands::Reconnect.run(Monq::App.instance.environments, force: false)
+        end
+
+        Pry.commands.block_command("reconnect!", "Force reconnect clients") do
+          Monq::Commands::Reconnect.run(Monq::App.instance.environments, force: true)
+        end
+      end
     end
-  end
-end
-
-if defined?(Pry)
-  Pry.commands.block_command("reconnect", "Reconnect dead clients") do
-    Monq::Commands::Reconnect.run(Monq::App.instance.environments, force: false)
-  end
-
-  Pry.commands.block_command("reconnect!", "Force reconnect clients") do
-    Monq::Commands::Reconnect.run(Monq::App.instance.environments, force: true)
   end
 end

@@ -40,16 +40,18 @@ module Monq
         msg = doc["msg"] || doc[:msg]
         !set_name.nil? || msg == "isdbgrid"
       end
+
+      def register_pry_command!
+        return if Pry.commands["sandbox-enter"]
+
+        Pry.commands.block_command("sandbox-enter", "Start an all-or-nothing transaction on every environment") do
+          Monq::Commands::Sandbox.enter(Monq::App.instance.environments)
+        end
+
+        Pry.commands.block_command("sandbox-quit", "Abort sandbox transactions and end their sessions") do
+          Monq::Commands::Sandbox.quit(Monq::App.instance.environments)
+        end
+      end
     end
-  end
-end
-
-if defined?(Pry)
-  Pry.commands.block_command("sandbox-enter", "Start an all-or-nothing transaction on every environment") do
-    Monq::Commands::Sandbox.enter(Monq::App.instance.environments)
-  end
-
-  Pry.commands.block_command("sandbox-quit", "Abort sandbox transactions and end their sessions") do
-    Monq::Commands::Sandbox.quit(Monq::App.instance.environments)
   end
 end

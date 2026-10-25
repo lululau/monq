@@ -74,17 +74,19 @@ module Monq
 
           Mongo::Logger.logger = Logger.new(App.log_io)
         end
+
+        def register_pry_command!
+          return if Pry.commands["show-sql"]
+
+          Pry.commands.block_command("show-sql", "Print Mongo commands") do
+            Monq::Commands::ShowSql.enable
+          end
+
+          Pry.commands.block_command("hide-sql", "Stop printing Mongo commands") do
+            Monq::Commands::ShowSql.disable
+          end
+        end
       end
     end
-  end
-end
-
-if defined?(Pry)
-  Pry.commands.block_command("show-sql", "Print Mongo commands") do
-    Monq::Commands::ShowSql.enable
-  end
-
-  Pry.commands.block_command("hide-sql", "Stop printing Mongo commands") do
-    Monq::Commands::ShowSql.disable
   end
 end
