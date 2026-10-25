@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 RSpec.describe Monq::Commands::Sandbox do
-  def sandbox_env(hello, name: "fof.dev")
+  def sandbox_env(hello, name: "blog.dev")
     client = double("client")
     db = double("db")
     allow(client).to receive(:database).and_return(db)

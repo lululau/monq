@@ -6,8 +6,8 @@ RSpec.describe Monq::Config do
   let(:yaml) do
     {
       "default" => { "auth_source" => "admin" },
-      "fof.dev" => { "uri" => "mongodb://h/db", "database" => "fof_dev", "namespace" => "Fof" },
-      "ops.prod" => { "host" => "10.0.0.2", "database" => "ops" }
+      "blog.dev" => { "uri" => "mongodb://h/db", "database" => "blog_dev", "namespace" => "Blog" },
+      "ops.prod" => { "host" => "ops.example.com", "database" => "ops" }
     }
   end
 
@@ -27,8 +27,8 @@ RSpec.describe Monq::Config do
   end
 
   it "slices only requested environments" do
-    envs = described_class.select_environments(yaml, ["fof.dev"], OpenStruct.new)
-    expect(envs.keys).to eq(["fof.dev"])
+    envs = described_class.select_environments(yaml, ["blog.dev"], OpenStruct.new)
+    expect(envs.keys).to eq(["blog.dev"])
   end
 
   it "builds a synthetic default from CLI when -e is absent but uri is present" do
@@ -39,8 +39,8 @@ RSpec.describe Monq::Config do
   end
 
   it "rejects two environments that share a namespace" do
-    yaml["ops.prod"]["namespace"] = "Fof"
-    expect { described_class.select_environments(yaml, ["fof.dev", "ops.prod"], OpenStruct.new) }
+    yaml["ops.prod"]["namespace"] = "Blog"
+    expect { described_class.select_environments(yaml, ["blog.dev", "ops.prod"], OpenStruct.new) }
       .to raise_error(Monq::Error, /namespace/i)
   end
 end
@@ -48,25 +48,25 @@ end
 RSpec.describe Monq::Config do
   describe ".client_options" do
     it "prefers uri and lets database override the URI path" do
-      opts = described_class.client_options(uri: "mongodb://u:p@10.0.0.12:27017/other?authSource=admin", database: "fof_dev")
-      expect(opts[:database]).to eq("fof_dev")
-      expect(opts[:hosts]).to eq(["10.0.0.12:27017"])
+      opts = described_class.client_options(uri: "mongodb://u:p@db.example.com:27017/other?authSource=admin", database: "blog_dev")
+      expect(opts[:database]).to eq("blog_dev")
+      expect(opts[:hosts]).to eq(["db.example.com:27017"])
     end
 
     it "requires database when the URI has no path" do
-      expect { described_class.client_options(uri: "mongodb://10.0.0.12:27017/?authSource=admin") }
+      expect { described_class.client_options(uri: "mongodb://db.example.com:27017/?authSource=admin") }
         .to raise_error(Monq::Error, /database/)
     end
 
     it "builds hosts from split fields when uri is absent" do
-      opts = described_class.client_options(host: "10.0.0.1", database: "x")
-      expect(opts[:hosts]).to eq(["10.0.0.1:27017"])
+      opts = described_class.client_options(host: "mongo.example.com", database: "x")
+      expect(opts[:hosts]).to eq(["mongo.example.com:27017"])
       expect(opts[:database]).to eq("x")
     end
 
     it "rewrites ssh to one direct seed and drops replica_set" do
       opts = described_class.client_options(
-        uri: "mongodb://u:p@10.0.0.12:27017,10.0.0.13:27017/fof_dev?replicaSet=rs0",
+        uri: "mongodb://u:p@db.example.com:27017,db2.example.com:27017/blog_dev?replicaSet=rs0",
         ssh: { local_host: "127.0.0.1", local_port: 27018 }
       )
       expect(opts[:hosts]).to eq(["127.0.0.1:27018"])
@@ -83,14 +83,14 @@ RSpec.describe Monq::Config do
 
   describe ".mask_uri" do
     it "masks the password" do
-      expect(described_class.mask_uri("mongodb://admin:secret@10.0.0.12:27017/db"))
-        .to eq("mongodb://admin:***@10.0.0.12:27017/db")
+      expect(described_class.mask_uri("mongodb://admin:secret@db.example.com:27017/db"))
+        .to eq("mongodb://admin:***@db.example.com:27017/db")
     end
   end
 
   it "maps env name to prefix and client name" do
-    expect(described_class.prefix_for("fof.dev")).to eq("fof")
-    expect(described_class.client_name_for("fof.dev")).to eq(:fof_dev)
-    expect(described_class.camelize("fof.dev")).to eq("FofDev")
+    expect(described_class.prefix_for("blog.dev")).to eq("blog")
+    expect(described_class.client_name_for("blog.dev")).to eq(:blog_dev)
+    expect(described_class.camelize("blog.dev")).to eq("BlogDev")
   end
 end

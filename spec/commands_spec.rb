@@ -4,16 +4,16 @@ RSpec.describe Monq::Commands::Info do
   it "masks passwords" do
     env = instance_double(
       Monq::Environment,
-      name: "fof.dev",
-      config: { uri: "mongodb://admin:secret@10.0.0.12:27017/fof_dev", database: "fof_dev" },
-      client_name: :fof_dev,
+      name: "blog.dev",
+      config: { uri: "mongodb://admin:secret@db.example.com:27017/blog_dev", database: "blog_dev" },
+      client_name: :blog_dev,
       ping?: true,
       ssh_proxy: nil
     )
-    text = described_class.render([env], /fof/)
+    text = described_class.render([env], /blog/)
     expect(text).to include("admin:***@")
     expect(text).not_to include("secret")
-    expect(text).to include("fof_dev")
+    expect(text).to include("blog_dev")
   end
 end
 
@@ -23,26 +23,26 @@ RSpec.describe Monq::Commands::Models do
   def model_env(models)
     instance_double(
       Monq::Environment,
-      name: "fof.dev",
+      name: "blog.dev",
       models: models,
       namespace_module: Module.new
     )
   end
 
   it "filters by collection name or model class name" do
-    fund = ModelRow.new("Fof::Fund", { collection: "Fund_approved" })
-    aum = ModelRow.new("Fof::Aum", { collection: "Aum_approved" })
-    text = described_class.render([model_env([fund, aum])], nil, "fund")
+    user = ModelRow.new("Blog::User", { collection: "users" })
+    order = ModelRow.new("Blog::Order", { collection: "orders" })
+    text = described_class.render([model_env([user, order])], nil, "user")
 
-    expect(text).to include("Fund_approved")
-    expect(text).not_to include("Aum_approved")
+    expect(text).to include("users")
+    expect(text).not_to include("orders")
   end
 
   it "accepts a slash-delimited regexp" do
-    fund = ModelRow.new("Fof::Fund", { collection: "Fund_approved" })
-    text = described_class.render([model_env([fund])], nil, "/aum/i")
+    user = ModelRow.new("Blog::User", { collection: "users" })
+    text = described_class.render([model_env([user])], nil, "/order/i")
 
-    expect(text).not_to include("Fund_approved")
+    expect(text).not_to include("users")
   end
 end
 

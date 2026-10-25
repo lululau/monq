@@ -14,10 +14,10 @@ Monq 是平行产品：**Mongoid + Pry 的 Mongo 工作台**。同一套 REPL �
 
 成功标准：
 
-- `monq -e fof.dev` 连上 `fof_dev`，load `~/.monq.d/fof.rb`，进入 Pry。
-- `Fund.where(fund_name: 'MW Alpha Plus Fund').t` 打出表格。
+- `monq -e blog.dev` 连上 `blog_dev`，load `~/.monq.d/blog.rb`，进入 Pry。
+- `User.where(name: 'alice').t` 打出表格。
 - 多环境 `monq -e a,b` 各有 namespace 和 Mongoid client。
-- 未建模集合可通过 `Fof.client[:jobs].find(...).to_a.t` 查询。
+- 未建模集合可通过 `Blog.client[:jobs].find(...).to_a.t` 查询。
 
 ## 2. 已拍板的约束
 
@@ -26,12 +26,12 @@ Monq 是平行产品：**Mongoid + Pry 的 Mongo 工作台**。同一套 REPL �
 | 模型来源 | 只加载用户写的模型，不 `list_collections` 造类 |
 | 模型 API | `Mongoid::Document` |
 | 第一版范围 | 尽量对齐 Arql REPL |
-| 模型文件 | 文件名 = 环境名前缀（`fof.dev` → `fof.rb`） |
+| 模型文件 | 文件名 = 环境名前缀（`blog.dev` → `blog.rb`） |
 | 连接配置 | URI 优先，否则拆字段拼 client |
 | 多环境 | 与 Arql 相同，顶层 `const_missing` 按 `-e` 顺序别名 |
 | SSH | 第一版内置，结构对齐 Arql |
 | 实现策略 | 平行复制 Arql 的壳，不抽 `arql-shell`，不依赖 `arql` gem |
-| 测试库 | `fof_dev` @ `10.0.0.12`（凭证只放本机 YAML / 环境变量，不进 git） |
+| 测试库 | `blog_dev` @ `db.example.com`（凭证只放本机 YAML / 环境变量，不进 git） |
 
 ## 3. 架构与启动流程
 
@@ -111,10 +111,10 @@ CLI 与 YAML 合并：
 
 | 方法 | 职责 |
 |------|------|
-| `name` | YAML 键，如 `fof.dev` |
+| `name` | YAML 键，如 `blog.dev` |
 | `namespace` | 模块名字符串 |
 | `namespace_module` | 该模块 |
-| `client_name` | Mongoid client 符号。`fof.dev` → `:fof_dev`（非 `[A-Za-z0-9]` 换成 `_`） |
+| `client_name` | Mongoid client 符号。`blog.dev` → `:blog_dev`（非 `[A-Za-z0-9]` 换成 `_`） |
 | `config` | 该环境合并后的配置 Hash（含自定义键） |
 | `connect!` | SSH（若有）→ 注册 client → `hello` |
 | `reconnect!` / `ping?` | 重建 client（仍用隧道改写后的 `127.0.0.1:local_port` 与去掉拓扑后的 options，不得拿原始 URI/host/seeds 重建；第一个环境的同一实例再映射 `:default`）/ `hello`（与 sandbox 探活同一命令，不用 `ping`） |
@@ -185,11 +185,11 @@ CLI 与 YAML 合并：
 default: &default
   auth_source: admin
 
-fof.dev:
+blog.dev:
   <<: *default
-  uri: mongodb://USER:PASS@10.0.0.12:27017/?authSource=admin
-  database: fof_dev
-  namespace: Fof
+  uri: mongodb://USER:PASS@db.example.com:27017/?authSource=admin
+  database: blog_dev
+  namespace: Blog
   ssh:
     host: jump.example.com
     user: deploy
@@ -200,11 +200,11 @@ fof.dev:
 | 键 | 规则 |
 |----|------|
 | `uri` | 有则作为 client 地址来源。密码可含需 URL 编码的字符 |
-| `database` | 逻辑库名。URI 路径无库名时**必填**。测试库为 `fof_dev` |
+| `database` | 逻辑库名。URI 路径无库名时**必填**。测试库为 `blog_dev` |
 | `host` `port` `username` `password` `auth_source` `replica_set` `ssl` | 无 `uri` 时拼 hosts/options |
-| `namespace` | 缺省：环境名里非字母数字当分隔，CamelCase。`fof.dev` → `FofDev` |
+| `namespace` | 缺省：环境名里非字母数字当分隔，CamelCase。`blog.dev` → `BlogDev` |
 | `ssh` | 同 Arql：`host` `port` `user` `password` `local_port` |
-| 其它键 | 原样保留，`env_config(/fof/)` 可读 |
+| 其它键 | 原样保留，`env_config(/blog/)` 可读 |
 
 URI 与 `database` 同时存在：client 连 URI，`use`/`database` 以 `database` 键为准（覆盖 URI path）。
 
@@ -212,12 +212,12 @@ URI 与 `database` 同时存在：client 连 URI，`use`/`database` 以 `databas
 
 环境名按 `.` `_` `-` 切第一段为前缀。
 
-- `fof.dev` → `fof.rb`
+- `blog.dev` → `blog.rb`
 - `blog` → `blog.rb`
 
 前缀 `.rb` 不存在：警告，不失败（允许只连库、用 `client[:coll]` 查）。默认路径的全局 `init.rb` 不存在：静默跳过。显式 `-i` 缺失见第 3 节。
 
-`load` 前缀文件时用 `namespace_module.module_eval` 等价上下文（`Kernel.load(path, wrap)` 不能注入模块；实现用 `namespace_module.module_eval(File.read(path), path)`，这样文件里顶层 `class Fund` 成为 `Fof::Fund`）。
+`load` 前缀文件时用 `namespace_module.module_eval` 等价上下文（`Kernel.load(path, wrap)` 不能注入模块；实现用 `namespace_module.module_eval(File.read(path), path)`，这样文件里顶层 `class User` 成为 `Blog::User`）。
 
 全局 `init.rb` 用普通 `load`，在 `Object` 上下文，供跨环境 helper。**每个进程只 load 一次**，在所有 `Environment#connect!` 之后、各环境 `load_models!` 之前。
 
@@ -235,9 +235,9 @@ URI 与 `database` 同时存在：client 连 URI，`use`/`database` 以 `databas
 
 判定「用户显式指定了 client」：**仅当** `store_in` 的 client 存在且 **不是** `:default`。`include Mongoid::Document` 会把 client 设成 `:default`，不能把「有 client 键」当成用户指定。
 
-用户可在模型里写 `store_in collection: 'Fund_approved'`；缺省 collection 仍是 Mongoid 对类名的 pluralize，所以 **fof 这种 PascalCase 集合名必须显式 `store_in collection:`**。README 写明：前缀文件里写 `class Fund`，不要写 `class Fof::Fund`（已经在模块上下文里）。
+用户可在模型里写 `store_in collection: 'users'`；缺省 collection 仍是 Mongoid 对类名的 pluralize，所以 **非 pluralize 默认值的集合名必须显式 `store_in collection:`**。README 写明：前缀文件里写 `class User`，不要写 `class Blog::User`（已经在模块上下文里）。
 
-`:default` client：Mongoid 在 `include Mongoid::Document` 时会碰 default client。规则：每个环境把自己的 **同一个** `Mongo::Client` 实例注册为命名 client（`:fof_dev`）；**另外把 `-e` 列表第一个环境的同一实例再映射为 `:default`**（不是再 `Mongo::Client.new` 一份）。多环境时未改绑的类会落到第一个环境——这就是为什么 load 之后还要把非显式 client 改成该环境的命名 client。
+`:default` client：Mongoid 在 `include Mongoid::Document` 时会碰 default client。规则：每个环境把自己的 **同一个** `Mongo::Client` 实例注册为命名 client（`:blog_dev`）；**另外把 `-e` 列表第一个环境的同一实例再映射为 `:default`**（不是再 `Mongo::Client.new` 一份）。多环境时未改绑的类会落到第一个环境——这就是为什么 load 之后还要把非显式 client 改成该环境的命名 client。
 
 `redefine!`：
 
@@ -248,7 +248,7 @@ URI 与 `database` 同时存在：client 连 URI，`use`/`database` 以 `databas
 
 ### 5.4 缩写与顶层别名
 
-- 缩写：类名中的大写字母（`MonthlyReturn` → `MR`）。冲突则 `MR2`、`MR3`… 挂在同一 namespace。
+- 缩写：类名中的大写字母（`BlogPost` → `BP`）。冲突则 `BP2`、`BP3`… 挂在同一 namespace。
 - `Object.const_missing`：按 `App` 里环境顺序，找第一个 `namespace_module.const_defined?(name)` 的常量。找不到则 `super`。
 - 第一版不做 YAML `model_names` 覆盖。
 
@@ -256,12 +256,12 @@ URI 与 `database` 同时存在：client 连 URI，`use`/`database` 以 `databas
 
 在 `create_namespace_module` 时定义：
 
-- `Fof.client` → `Mongo::Client`
-- `Fof.models` → Document 类
-- `Fof.collections` → `client.database.collection_names`（探索，不造类）
-- `Fof.config` → 该环境 config
-- `Fof.q(doc)` → `command(doc)`
-- `Fof.dump`：第一版**不实现**（属于砍掉的 mongodump）
+- `Blog.client` → `Mongo::Client`
+- `Blog.models` → Document 类
+- `Blog.collections` → `client.database.collection_names`（探索，不造类）
+- `Blog.config` → 该环境 config
+- `Blog.q(doc)` → `command(doc)`
+- `Blog.dump`：第一版**不实现**（属于砍掉的 mongodump）
 
 ## 6. REPL 与展示
 
@@ -294,7 +294,7 @@ URI 与 `database` 同时存在：client 连 URI，`use`/`database` 以 `databas
 
 文档 `t` / `v`：表头取**物化文档的 `attributes.keys`**（含未在模型里 `field` 声明的键、含 `_id`），不是只打 `fields` 声明。多行时表头取**第一行**的 keys；后续行缺的键留空，多出来的键本表不显示（不求并集，避免宽表爆炸）。值为 Presenter 后的标量。`_meta` 作为一列截断 JSON，不自动展开为多列。
 
-类方法 `Fund.t`（Arql 那种打表结构）：第一版**不做**。结构探索用 `m` 和 `Fof.collections`。
+类方法 `Fund.t`（Arql 那种打表结构）：第一版**不做**。结构探索用 `m` 和 `Blog.collections`。
 
 `v` 返回值（给 Org Babel / 给 `t` 复用，对齐 Arql）：
 
@@ -325,7 +325,7 @@ Criteria / View 的 `t`、`v`、`vd`：若用户未设 `limit`，物化前最多
 1. **检查：** 对每个环境 `hello = client.database.command(hello: 1).documents.first`（或 driver 等价）。无 `setName` 且 `msg != "isdbgrid"` → 整体失败，打印「当前部署不支持事务（需要 replica set 或 mongos），未进入 sandbox」，**不开任何 session**。
 2. **开启：** 全部通过后，逐环境 `session = client.start_session`；`session.start_transaction`；把 session 绑到该环境的 **同一个** `Mongo::Client`（见下）。第 N 个失败则 abort 已成功的 1..N-1，整体拒绝。
 
-绑定方式（实现约束，不是用户 API）：REPL 不能包在 `with_session` 块里。**禁止**只把 session 塞进全局 `Mongoid::Threaded.set_session`——多环境时后一个会盖掉前一个。必须 **按 Environment 的 `Mongo::Client` 注入 session**（对该环境 client 设默认 session，或包装该 client 使后续操作带 session）。规格要求：**该环境模型的 `save`/`update`/`delete`/`create` 走该环境事务；`Fof.client[:x].insert_one` 第一版不保证进事务**，README 写明。
+绑定方式（实现约束，不是用户 API）：REPL 不能包在 `with_session` 块里。**禁止**只把 session 塞进全局 `Mongoid::Threaded.set_session`——多环境时后一个会盖掉前一个。必须 **按 Environment 的 `Mongo::Client` 注入 session**（对该环境 client 设默认 session，或包装该 client 使后续操作带 session）。规格要求：**该环境模型的 `save`/`update`/`delete`/`create` 走该环境事务；`Blog.client[:x].insert_one` 第一版不保证进事务**，README 写明。
 
 `sandbox-quit`：每个已开启的 session `abort_transaction` + `end_session`；解开 per-client session 绑定；prompt 去掉 sandbox。没有 commit 命令。
 
@@ -347,18 +347,18 @@ sandbox 期间 Pry 命令 `reconnect` / `reconnect!` / `redefine`：**拒绝**�
 
 日志与 `info` 不得出现明文密码。打码：URI 中 `://user:pass@` → `://user:***@`。
 
-## 8. 针对 `fof_dev` 的模型约定（用户配置，不进 gem）
+## 8. 示例模型约定（用户配置，不进 gem）
 
-库里 64 个集合。第一版 gem **不** 携带这些模型。README 给最小示例，用户放 `~/.monq.d/fof.rb`：
+第一版 gem **不** 携带业务模型。README 给最小示例，用户放 `~/.monq.d/blog.rb`：
 
 - `_id` 均为 ObjectId，Mongoid 默认主键可用。
-- 集合名是 `Fund_approved` 这种 PascalCase，必须 `store_in collection: 'Fund_approved'`。
-- 关联是自然键 `fund_name` + `share_class_name`，不是 ObjectId `belongs_to`。示例用查询方法，不用默认 `has_many`。
-- `month` / `inception_date` / `date` 是 **String**，`field type: String`，范围查询靠 `YYYY-MM` 字典序。
-- `asset_classes` / `factors` / `sectors` / `indicators` 为动态键 Hash，`field type: Hash`。
-- `_meta` 结构稳定，可用 `embeds_one` + `store_as: '_meta'`。嵌入类不要 `store_in client:`。
+- 集合名若不是 Mongoid 对类名的 pluralize 结果，必须 `store_in collection:`。
+- 关联可以是自然键查询方法，不是只能用 ObjectId `belongs_to`。
+- 日期字段可以是 **String**，范围查询靠 `YYYY-MM` / `YYYY-MM-DD` 字典序。
+- 动态键用 `field type: Hash`。
+- 共用元数据可用 `embeds_one` + `store_as: '_meta'`。嵌入类不要 `store_in client:`。
 
-集成测试用 spec 内临时 Document 子类，不依赖用户的 `fof.rb`。
+集成测试用 spec 内临时 Document 子类，不依赖用户的 `blog.rb`。
 
 ## 9. 依赖与仓库布局
 
@@ -390,9 +390,9 @@ docs/superpowers/specs/2026-10-24-monq-design.md
 
 ## 10. 测试
 
-1. **单元（默认 rake spec）：** YAML 合并与 URI 优先；`database:` 覆盖 URI path；无 `-e` 时合成/失败（含「不要把 YAML `default:` 锚点当环境」）；单环境 CLI 覆盖与 `ssh:` deep merge；多环境禁止 CLI 覆盖；同 namespace 两环境失败；client 名与 namespace 默认；前缀 `fof.dev` → `fof.rb`；缩写冲突；Presenter；`const_missing` 顺序；URI 打码；SSH 改写后只留一条 seed + `direct_connection` 且 **无** `replica_set`；`mongodb+srv`+ssh 失败；sandbox 多环境失败时回退已开 session；`redefine!` 后 `Mongoid.models` 无残留（含嵌入类）。命令模块在假 Environment 上的输出。不连网。
-2. **集成（有 `MONQ_TEST_URI` 且 `MONQ_TEST_DB` 才跑，否则 skip）：** `hello` 成功；`collection_names` 非空；临时 `store_in collection: 'Fund_approved'` 的模型 `count` >= 1；`where(fund_name: ...).limit(2).to_a` 能过 Presenter/`Table`。URI 只来自环境变量。
-3. 不测 Pry TTY。不把 `10.0.0.12` 密码写进仓库或 CI 配置。
+1. **单元（默认 rake spec）：** YAML 合并与 URI 优先；`database:` 覆盖 URI path；无 `-e` 时合成/失败（含「不要把 YAML `default:` 锚点当环境」）；单环境 CLI 覆盖与 `ssh:` deep merge；多环境禁止 CLI 覆盖；同 namespace 两环境失败；client 名与 namespace 默认；前缀 `blog.dev` → `blog.rb`；缩写冲突；Presenter；`const_missing` 顺序；URI 打码；SSH 改写后只留一条 seed + `direct_connection` 且 **无** `replica_set`；`mongodb+srv`+ssh 失败；sandbox 多环境失败时回退已开 session；`redefine!` 后 `Mongoid.models` 无残留（含嵌入类）。命令模块在假 Environment 上的输出。不连网。
+2. **集成（有 `MONQ_TEST_URI` 且 `MONQ_TEST_DB` 才跑，否则 skip）：** `hello` 成功；`collection_names` 非空；临时 `store_in collection: 'users'` 的模型 `count` >= 1；`where(name: ...).limit(2).to_a` 能过 Presenter/`Table`。URI 只来自环境变量。
+3. 不测 Pry TTY。不把 `db.example.com` 密码写进仓库或 CI 配置。
 
 ## 11. 实现顺序（给后续 plan 用，不是本 spec 的范围膨胀）
 

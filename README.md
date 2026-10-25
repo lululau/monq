@@ -19,53 +19,51 @@ bundle exec exe/monq
 `~/.monq.d/init.yml`:
 
 ```yaml
-fof.dev:
-  uri: mongodb://USER:PASSWORD@10.0.0.12:27017/?authSource=admin
-  database: fof_dev
-  namespace: Fof
+blog.dev:
+  uri: mongodb://USER:PASSWORD@db.example.com:27017/?authSource=admin
+  database: blog_dev
+  namespace: Blog
 ```
 
 `USER` and `PASSWORD` are placeholders. Put real credentials only in your local YAML or in `MONQ_TEST_URI` / `MONQ_TEST_DB` for the optional integration spec. Do not commit them.
 
-Start with `monq -e fof.dev`. The environment prefix (`fof`) loads `~/.monq.d/fof.rb` inside the `Fof` namespace.
+Start with `monq -e blog.dev`. The environment prefix (`blog`) loads `~/.monq.d/blog.rb` inside the `Blog` namespace.
 
 ## Models
 
-`~/.monq.d/fof.rb`:
+`~/.monq.d/blog.rb`:
 
 ```ruby
-class Fund
+class User
   include Mongoid::Document
-  store_in collection: "Fund_approved"
-  field :fund_name, type: String
-  field :share_class_name, type: String
-  field :inception_date, type: String
-  embeds_one :meta, class_name: "FundMeta", store_as: "_meta"
+  store_in collection: "users"
+  field :name, type: String
+  field :status, type: String
+  embeds_one :meta, class_name: "UserMeta", store_as: "_meta"
 
-  def monthly_returns
-    MonthlyReturn.where(fund_name: fund_name, share_class_name: share_class_name)
+  def posts
+    Post.where(author_name: name)
   end
 end
 
-class FundMeta
+class UserMeta
   include Mongoid::Document
-  embedded_in :fund, class_name: "Fund"
-  field :status, type: String
+  embedded_in :user, class_name: "User"
+  field :source, type: String
 end
 
-class MonthlyReturn
+class Post
   include Mongoid::Document
-  store_in collection: "MonthlyReturn_approved"
-  field :fund_name, type: String
-  field :share_class_name, type: String
-  field :month, type: String
-  field :net_return, type: Float
+  store_in collection: "posts"
+  field :author_name, type: String
+  field :title, type: String
+  field :published_on, type: String
 end
 ```
 
-Write `class Fund`, not `class Fof::Fund`. The file is already evaluated inside the namespace, so the class becomes `Fof::Fund`.
+Write `class User`, not `class Blog::User`. The file is already evaluated inside the namespace, so the class becomes `Blog::User`.
 
-Dates such as `inception_date` and `month` are strings (`YYYY-MM` sorts lexicographically). Associations are natural keys (`fund_name` + `share_class_name`), not ObjectId `belongs_to` / `has_many`. PascalCase collection names must be set with `store_in collection:`.
+String dates such as `published_on` (`YYYY-MM-DD`) sort lexicographically. Associations can be query methods on natural keys, not only ObjectId `belongs_to` / `has_many`. Non-pluralized collection names must be set with `store_in collection:`.
 
 ## Commands
 
