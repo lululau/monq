@@ -22,7 +22,7 @@ class Array
       csv = CSV.new(file)
       return if docs.empty?
 
-      keys = docs.first.keys
+      keys = Monq::Presenter.column_names(docs)
       csv << keys.map(&:to_s)
       docs.each { |row| csv << keys.map { |k| row[k].to_s } }
     end
@@ -35,7 +35,7 @@ class Array
     package.workbook.add_worksheet(name: sheet_name) do |sheet|
       next if docs.empty?
 
-      keys = docs.first.keys
+      keys = Monq::Presenter.column_names(docs)
       sheet.add_row(keys.map(&:to_s))
       docs.each { |row| sheet.add_row(keys.map { |k| row[k].to_s }) }
     end

@@ -29,9 +29,16 @@ module Monq
       return [] if docs.nil? || docs.empty?
 
       docs = docs.map { |doc| doc.is_a?(Hash) || !doc.respond_to?(:attributes) ? doc : doc.attributes }
-      keys = docs.first.keys
+      keys = column_names(docs)
       body = docs.map { |doc| keys.map { |key| scalar(doc[key]) } }
       [keys, *body]
+    end
+
+    # Union of keys across all docs: Mongoid documents only carry the fields
+    # actually stored on each one, so any single doc (e.g. the oldest row in a
+    # natural-order cursor) can miss fields present in the rest.
+    def column_names(docs)
+      docs.flat_map { |doc| doc.is_a?(Hash) || !doc.respond_to?(:attributes) ? doc.keys : doc.attributes.keys }.uniq
     end
 
     def as_json_tree(value)

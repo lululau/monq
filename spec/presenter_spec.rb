@@ -14,9 +14,9 @@ RSpec.describe Monq::Presenter do
     expect(text).to end_with("…")
   end
 
-  it "builds rows from the first document's keys" do
+  it "builds rows from the union of all documents' keys" do
     rows = described_class.rows([{ "a" => 1, "b" => 2 }, { "a" => 3, "c" => 9 }])
-    expect(rows.first).to eq(%w[a b])
-    expect(rows.last).to eq([3, nil])
+    expect(rows.first).to eq(%w[a b c])
+    expect(rows.last).to eq([3, nil, 9])
   end
 end

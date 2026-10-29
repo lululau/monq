@@ -34,12 +34,14 @@ module Monq
     end
 
     def self.filter_docs(docs, attrs = [], options = {})
-      unless docs.empty? || docs.first.is_a?(Hash) || !docs.first.respond_to?(:attributes)
+      return docs if docs.empty?
+
+      column_names = Presenter.column_names(docs)
+      unless docs.first.is_a?(Hash) || !docs.first.respond_to?(:attributes)
         docs = docs.map(&:attributes)
       end
-      return docs if docs.empty? || (attrs.empty? && !options[:except])
+      return docs if attrs.empty? && !options[:except]
 
-      column_names = docs.first.keys
       selected = attrs.flat_map { |e| e.is_a?(Regexp) ? column_names.grep(e) : e }.uniq
 
       if options[:except]
