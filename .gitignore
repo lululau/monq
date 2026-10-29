@@ -11,3 +11,6 @@
 .rspec_status
 
 .worktrees/
+
+# gem build artifacts
+*.gem

@@ -3,16 +3,16 @@
 module Monq
   module Ext
     module View
-      def t
-        materialized_docs.t
+      def t(*attrs, **options)
+        materialized_docs.t(*attrs, **options)
       end
 
-      def v
-        materialized_docs.v
+      def v(*attrs, **options)
+        materialized_docs.v(*attrs, **options)
       end
 
-      def vd
-        materialized_docs.vd
+      def vd(*attrs, **options)
+        materialized_docs.vd(*attrs, **options)
       end
 
       # Full result set. Display methods cap at 500; export must not.

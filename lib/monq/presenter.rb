@@ -28,6 +28,7 @@ module Monq
     def rows(docs)
       return [] if docs.nil? || docs.empty?
 
+      docs = docs.map { |doc| doc.is_a?(Hash) || !doc.respond_to?(:attributes) ? doc : doc.attributes }
       keys = docs.first.keys
       body = docs.map { |doc| keys.map { |key| scalar(doc[key]) } }
       [keys, *body]

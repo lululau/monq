@@ -10,9 +10,9 @@ module Monq
       [criteria.to_a, capped]
     end
 
-    def self.display_criteria(criteria)
+    def self.display_criteria(criteria, attrs = [], options = {})
       docs, capped = materialize(criteria)
-      puts table_for(docs)
+      puts table_for(filter_docs(docs, attrs, options))
       puts "showing #{docs.size} rows (capped at #{CAP})" if capped
       nil
     end
@@ -31,6 +31,28 @@ module Monq
 
       keys = rows.first
       [keys, nil, *rows[1..]]
+    end
+
+    def self.filter_docs(docs, attrs = [], options = {})
+      unless docs.empty? || docs.first.is_a?(Hash) || !docs.first.respond_to?(:attributes)
+        docs = docs.map(&:attributes)
+      end
+      return docs if docs.empty? || (attrs.empty? && !options[:except])
+
+      column_names = docs.first.keys
+      selected = attrs.flat_map { |e| e.is_a?(Regexp) ? column_names.grep(e) : e }.uniq
+
+      if options[:except]
+        selected = column_names if selected.empty?
+        except = options[:except]
+        if except.is_a?(Regexp)
+          selected.reject! { |e| e =~ except }
+        else
+          selected -= [except].flatten
+        end
+      end
+
+      docs.map { |doc| doc.slice(*selected) }
     end
 
     def self.limit_unset?(options)

@@ -1,18 +1,18 @@
 # frozen_string_literal: true
 
 class Array
-  def t
-    puts Monq::Ext.table_for(hash_docs)
+  def t(*attrs, **options)
+    puts Monq::Ext.table_for(Monq::Ext.filter_docs(hash_docs, attrs, options))
     nil
   end
 
-  def v
-    Monq::Ext.vertical(hash_docs)
+  def v(*attrs, **options)
+    Monq::Ext.vertical(Monq::Ext.filter_docs(hash_docs, attrs, options))
   end
 
   # visidata comes later; always print the table so vd works without the binary.
-  def vd
-    t
+  def vd(*attrs, **options)
+    t(*attrs, **options)
   end
 
   def write_csv(filename)

@@ -3,16 +3,16 @@
 module Monq
   module Ext
     module Document
-      def t
-        [attributes].t
+      def t(*attrs, **options)
+        [attributes].t(*attrs, **options)
       end
 
-      def v
-        [attributes].v
+      def v(*attrs, **options)
+        [attributes].v(*attrs, **options)
       end
 
-      def vd
-        [attributes].vd
+      def vd(*attrs, **options)
+        [attributes].vd(*attrs, **options)
       end
 
       def write_csv(filename)

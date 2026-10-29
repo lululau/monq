@@ -3,17 +3,17 @@
 module Monq
   module Ext
     module Criteria
-      def t
-        Monq::Ext.display_criteria(self)
+      def t(*attrs, **options)
+        Monq::Ext.display_criteria(self, attrs, options)
       end
 
-      def v
+      def v(*attrs, **options)
         docs, = Monq::Ext.materialize(self)
-        docs.v
+        docs.v(*attrs, **options)
       end
 
-      def vd
-        t
+      def vd(*attrs, **options)
+        t(*attrs, **options)
       end
 
       # Full result set. Display methods cap at 500; export must not.
