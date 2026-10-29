@@ -19,11 +19,11 @@ gem bump --version major  # 升 major：0.1.0 -> 1.0.0
 
 注意：
 
-- `gem bump` 默认**只修改** `lib/monq/version.rb`，不创建 commit。
-  加 `-c`（`--commit`）可让它顺带提交。
+- 本机的 gem-release（2.2.x）中，`gem bump` **默认会自动创建 commit**
+  （提交消息为 `Bump monq to x.y.z`，仅含 `version.rb`），可用 `--no-commit` 关闭。
 - `Gemfile.lock` 里固定了 monq 自身版本，bump 后会过期。
   运行一次 `bundle install`（或任意 `bundle exec` 命令）即可自动刷新，
-  之后把 `Gemfile.lock` 与 `version.rb` 一起提交。
+  之后把 `Gemfile.lock` 单独提交。
 
 ## 发布到 RubyGems：`rake release`
 
@@ -47,7 +47,9 @@ rake release
 ## 完整流程示例
 
 ```bash
-bundle exec rspec          # 发布前先跑测试
-gem bump --commit          # 升 patch 版本并提交（若 lock 未更新，先 bundle install）
-rake release               # 构建、打 tag、推送到 RubyGems
+bundle exec rspec        # 发布前先跑测试
+gem bump                 # 升 patch 版本并自动提交 version.rb
+bundle install           # 刷新 Gemfile.lock 中 monq 自身版本
+git add Gemfile.lock && git commit -m "chore: update Gemfile.lock"
+rake release             # 构建、打 tag、推送到 RubyGems
 ```
