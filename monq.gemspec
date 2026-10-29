@@ -37,6 +37,7 @@ Gem::Specification.new do |spec|
   spec.require_paths = ["lib"]
 
   spec.add_dependency "mongoid", "~> 9.0"
+  spec.add_dependency "csv"
   spec.add_dependency "pry", "~> 0.15"
   spec.add_dependency "pry-byebug", "~> 3.10"
   spec.add_dependency "net-ssh-gateway", "~> 2.0"
